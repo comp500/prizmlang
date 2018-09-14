@@ -1,6 +1,7 @@
 *.g3l
 g3lREADME.txt
 analysis.txt
+out.json
 
 ### Go ###
 # Binaries for programs and plugins

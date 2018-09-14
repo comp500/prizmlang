@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"log"
 	"time"
@@ -23,7 +24,14 @@ type LangFile struct {
 	DateCreated     time.Time
 	Salutation      string
 	FileName        string
+	Messages        []Message
 	unknown         []byte
+}
+
+// Message is a single translated string stored in the LangFile
+type Message struct {
+	offset int
+	Data   string
 }
 
 func main() {
@@ -42,14 +50,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("%s\n", string(json))
+	//log.Printf("%s\n", string(json))
+	//log.Printf("%#v\n", file)
+	err = ioutil.WriteFile("out.json", json, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func readFile(data []byte) (LangFile, error) {
 	var file LangFile
-	index := 0
 
 	// Header
+	index := 0
 
 	index += 14 // Const: b3 86 c8 ca ca df df df d3 ff fe ff fe ff
 	file.inv1 = data[index]
@@ -77,9 +90,12 @@ func readFile(data []byte) (LangFile, error) {
 	file.VersionNumber = string(data[index : index+10])
 	index += 10
 	index += 2 // Padding
-	file.DateCreated, _ = time.Parse("2006.0102.1504", string(data[index:index+14]))
+	var err error
+	file.DateCreated, err = time.Parse("2006.0102.1504", string(data[index:index+14]))
+	if err != nil {
+		return file, err
+	}
 	index += 14
-
 	// Warp!
 	index = 0x0e9c
 	// TODO: check names are equal?
@@ -89,6 +105,35 @@ func readFile(data []byte) (LangFile, error) {
 	index += 16
 	file.FileName = string(bytes.Trim(data[index:index+16], "\x00"))
 	index += 16
+
+	// Executable section
+	index = 0x1000
+
+	index += 10 // Const: 4c 59 37 35 35 00 00 00 02 01
+	// +1 as it is zero-based?
+	messageCount := binary.BigEndian.Uint32(data[index:index+4]) + 1
+	index += 4
+	index += 2 // Padding
+	// Make message array
+	file.Messages = make([]Message, messageCount)
+	for i := range file.Messages {
+		messageOffset := binary.BigEndian.Uint32(data[index : index+4])
+		index += 4
+		file.Messages[i] = Message{offset: int(messageOffset)}
+	}
+	// After getting to first message contents, read actual message data
+	for i, v := range file.Messages {
+		// offset == 4294967295 means it doesn't exist
+		if v.offset != 4294967295 && v.offset < (len(data)-index) {
+			// Search index + offset to find 0x00
+			numBytes := bytes.IndexByte(data[index+v.offset:], 0)
+			if numBytes != -1 {
+				file.Messages[i].Data = string(data[index+v.offset : index+v.offset+numBytes])
+			} else {
+				return file, errors.New("Invalid string, could not find null byte")
+			}
+		}
+	}
 
 	file.unknown = data[index : index+100]
 	return file, nil
