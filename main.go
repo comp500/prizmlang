@@ -17,15 +17,14 @@ type LangFile struct {
 	inv2            byte
 	checksum        []byte
 	execSectionSize uint32
-	Name            string
+	Name            string // Limited to 16 bytes
 	fileSize        uint32
 	InternalName    string
-	VersionNumber   string
+	VersionNumber   string // Must be XX.XX.XXXX
 	DateCreated     time.Time
-	Salutation      string
-	FileName        string
+	Salutation      string // Limited to 16 bytes
+	FileName        string // Limited to 16 bytes
 	Messages        map[int]string
-	unknown         []byte
 }
 
 func main() {
@@ -44,8 +43,6 @@ func main() {
 		log.Fatal(err)
 	}
 
-	//log.Printf("%s\n", string(json))
-	//log.Printf("%#v\n", file)
 	err = ioutil.WriteFile("out.json", json, 0644)
 	if err != nil {
 		log.Fatal(err)
@@ -58,15 +55,17 @@ func readFile(data []byte) (LangFile, error) {
 	// Header
 	index := 0
 
-	index += 14 // Const: b3 86 c8 ca ca df df df d3 ff fe ff fe ff
-	file.inv1 = data[index]
+	index += 14             // Const: b3 86 c8 ca ca df df df d3 ff fe ff fe ff
+	file.inv1 = data[index] // TODO: check this is correct?
 	index++
-	index++ // Const: fe
-	file.invFileSize = data[index : index+4]
+	index++                                  // Const: fe
+	file.invFileSize = data[index : index+4] // TODO: check this is correct?
 	index += 4
-	file.inv2 = data[index]
+	file.inv2 = data[index] // TODO: check this is correct?
 	index++
 	index += 11 // Const: 00 ff ff 00 00 00 00 00 00 00 00
+	// check this is correct?
+	// calculator does not check this, could break stuff
 	file.checksum = data[index : index+4]
 	index += 4
 	index += 2  // Const: 04 01
@@ -93,7 +92,7 @@ func readFile(data []byte) (LangFile, error) {
 	// Warp!
 	index = 0x0e9c
 	// TODO: check names are equal?
-	// _ = string(bytes.Trim(data[index:index+16], "\x00"))
+	// file.Name = string(bytes.Trim(data[index:index+16], "\x00"))
 	index += 16
 	file.Salutation = string(bytes.Trim(data[index:index+16], "\x00"))
 	index += 16
@@ -129,7 +128,10 @@ func readFile(data []byte) (LangFile, error) {
 			}
 		}
 	}
+	// TODO: check checksums are equal?
+	index = int(file.execSectionSize) + 0x1000
+	// file.checksum = data[index : index+4]
+	index += 4
 
-	file.unknown = data[index : index+100]
 	return file, nil
 }
