@@ -24,7 +24,7 @@ type LangFile struct {
 	DateCreated     time.Time
 	Salutation      string
 	FileName        string
-	Messages        []string
+	Messages        map[int]string
 	unknown         []byte
 }
 
@@ -110,7 +110,7 @@ func readFile(data []byte) (LangFile, error) {
 	index += 2 // Padding
 	// Make message arrays
 	messageOffsets := make([]int, messageCount)
-	file.Messages = make([]string, messageCount)
+	file.Messages = make(map[int]string, messageCount)
 	for i := range messageOffsets {
 		messageOffset := binary.BigEndian.Uint32(data[index : index+4])
 		index += 4
