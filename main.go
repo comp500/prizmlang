@@ -24,14 +24,8 @@ type LangFile struct {
 	DateCreated     time.Time
 	Salutation      string
 	FileName        string
-	Messages        []Message
+	Messages        []string
 	unknown         []byte
-}
-
-// Message is a single translated string stored in the LangFile
-type Message struct {
-	offset int
-	Data   string
 }
 
 func main() {
@@ -114,21 +108,22 @@ func readFile(data []byte) (LangFile, error) {
 	messageCount := binary.BigEndian.Uint32(data[index:index+4]) + 1
 	index += 4
 	index += 2 // Padding
-	// Make message array
-	file.Messages = make([]Message, messageCount)
-	for i := range file.Messages {
+	// Make message arrays
+	messageOffsets := make([]int, messageCount)
+	file.Messages = make([]string, messageCount)
+	for i := range messageOffsets {
 		messageOffset := binary.BigEndian.Uint32(data[index : index+4])
 		index += 4
-		file.Messages[i] = Message{offset: int(messageOffset)}
+		messageOffsets[i] = int(messageOffset)
 	}
 	// After getting to first message contents, read actual message data
-	for i, v := range file.Messages {
+	for i, v := range messageOffsets {
 		// offset == 4294967295 means it doesn't exist
-		if v.offset != 4294967295 && v.offset < (len(data)-index) {
+		if v != 4294967295 && v < (len(data)-index) {
 			// Search index + offset to find 0x00
-			numBytes := bytes.IndexByte(data[index+v.offset:], 0)
+			numBytes := bytes.IndexByte(data[index+v:], 0)
 			if numBytes != -1 {
-				file.Messages[i].Data = string(data[index+v.offset : index+v.offset+numBytes])
+				file.Messages[i] = string(data[index+v : index+v+numBytes])
 			} else {
 				return file, errors.New("Invalid string, could not find null byte")
 			}
