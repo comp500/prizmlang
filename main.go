@@ -7,8 +7,10 @@ import (
 	"errors"
 	"io/ioutil"
 	"log"
-	"strings"
+	"regexp"
+	"strconv"
 	"time"
+	"unicode/utf8"
 )
 
 // LangFile is a language file data struct
@@ -25,24 +27,7 @@ type LangFile struct {
 	DateCreated     time.Time
 	Salutation      string // Limited to 16 bytes
 	FileName        string // Limited to 16 bytes
-	Messages        map[int]RawUnicodeString
-}
-
-// RawUnicodeString is a string that doesn't get attacked by encoding/json because CASIO likes to use invalid UTF-8
-type RawUnicodeString string
-
-// UnmarshalJSON is a function
-func (s *RawUnicodeString) UnmarshalJSON(b []byte) error {
-	*s = RawUnicodeString(b)
-	return nil
-}
-
-// MarshalJSON is a function
-func (s RawUnicodeString) MarshalJSON() ([]byte, error) {
-	log.Print(s)
-	s = RawUnicodeString(strings.Replace(string(s), "\\", "\\\\", -1)) // escape backslash
-	s = RawUnicodeString(strings.Replace(string(s), "\"", "\\\"", -1)) // escape quotes
-	return []byte("\"" + s + "\""), nil
+	Messages        map[int]string
 }
 
 func main() {
@@ -87,6 +72,39 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}*/
+}
+
+// I have to do this because CASIO characters are attacked by encoding/json, as they are invalid
+
+func sanitiseString(input string) string {
+	var buf bytes.Buffer
+	bytes := []byte(input)
+	for i, b := range bytes {
+		err, _ := utf8.DecodeRune(bytes[i : i+1])
+		if err == utf8.RuneError {
+			log.Println(strconv.Quote(input), strconv.QuoteRuneToASCII(rune(b)))
+			buf.WriteString("u{" + strconv.FormatInt(int64(b), 16) + "}")
+		} else {
+			buf.WriteByte(b)
+		}
+	}
+	return buf.String()
+}
+
+var decodeRegex *regexp.Regexp
+
+func init() {
+	decodeRegex = regexp.MustCompile("u\\{[0-9a-fA-F]{2}\\}")
+}
+
+func decodeString(input string) string {
+	return decodeRegex.ReplaceAllStringFunc(input, func(match string) string {
+		if value, err := strconv.ParseInt(match[2:4], 16, 32); err == nil {
+			byteValue := []byte{byte(value)} // because directly casting to string causes problems
+			return string(byteValue)
+		}
+		return match
+	})
 }
 
 func readFile(data []byte) (LangFile, error) {
@@ -149,7 +167,7 @@ func readFile(data []byte) (LangFile, error) {
 	index += 2 // Padding
 	// Make message arrays
 	messageOffsets := make([]int, messageCount)
-	file.Messages = make(map[int]RawUnicodeString, messageCount)
+	file.Messages = make(map[int]string, messageCount)
 	for i := range messageOffsets {
 		messageOffset := binary.BigEndian.Uint32(data[index : index+4])
 		index += 4
@@ -162,7 +180,7 @@ func readFile(data []byte) (LangFile, error) {
 			// Search index + offset to find 0x00
 			numBytes := bytes.IndexByte(data[index+v:], 0)
 			if numBytes != -1 {
-				file.Messages[i] = RawUnicodeString(data[index+v : index+v+numBytes])
+				file.Messages[i] = sanitiseString(string(data[index+v : index+v+numBytes]))
 			} else {
 				return file, errors.New("Invalid string, could not find null byte")
 			}
@@ -188,7 +206,7 @@ func writePadString(b *bytes.Buffer, s string, n int) (int, error) {
 	return b.Write(slice)
 }
 
-func getMaxIndex(messages map[int]RawUnicodeString) int {
+func getMaxIndex(messages map[int]string) int {
 	var maxNumber int
 	for maxNumber = range messages {
 		break
@@ -229,11 +247,9 @@ func writeFile(file LangFile) ([]byte, error) {
 	messageOffsetBytes := make([]byte, messageCount*4)
 	messageOffsetBlankBytes := []byte{0xff, 0xff, 0xff, 0xff}
 	currentOffset := 0
-	// Casio characters use the replacement character (FF FD) which is replaced with
-	// EF BF BD when unmarshalling; must replace it back
-	//for i, v := range file.Messages {
-	//	file.Messages[i] = strings.Replace(v, "\xEF\xBF\xBD", "\xA9", -1)
-	//}
+	for i, v := range file.Messages {
+		file.Messages[i] = decodeString(v)
+	}
 	for i := 0; i < messageCount; i++ { // Go in index order
 		if v, ok := file.Messages[i]; ok { // If exists, write
 			// Put uint32s every 4 bytes into messageOffsetBytes
@@ -282,7 +298,7 @@ func writeFile(file LangFile) ([]byte, error) {
 	b.Write(messageOffsetBytes)
 	for i := 0; i < messageCount; i++ { // Go in index order
 		if v, ok := file.Messages[i]; ok { // If exists, write
-			b.WriteString(string(v))
+			b.WriteString(v)
 			b.WriteByte(0x00) // null-terminated
 		}
 	}
