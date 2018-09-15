@@ -20,7 +20,8 @@ type LangFile struct {
 	inv2            byte
 	checksum        []byte
 	execSectionSize uint32
-	Name            string // Limited to 16 bytes
+	Name            string // Limited to 28 bytes
+	TranslatedName  string // Limited to 16 bytes
 	fileSize        uint32
 	InternalName    string
 	VersionNumber   string // Must be XX.XX.XXXX
@@ -30,48 +31,71 @@ type LangFile struct {
 	Messages        map[int]string
 }
 
+var decodeRegex *regexp.Regexp
+
+func init() {
+	decodeRegex = regexp.MustCompile("u\\{[0-9a-fA-F]{2}\\}")
+}
+
 func main() {
-	dat, err := ioutil.ReadFile("English.g3l")
+	err := readFile("Russian.g3l", "out.json")
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	file, err := readFile(dat)
+	err = writeFile("out.json", "Russian2.g3l")
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func readFile(input, output string) error {
+	in, err := ioutil.ReadFile(input)
+	if err != nil {
+		return err
+	}
+
+	file, err := readFileData(in)
+	if err != nil {
+		return err
 	}
 
 	json, err := json.MarshalIndent(file, "", "\t")
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	err = ioutil.WriteFile("out.json", json, 0644)
+	err = ioutil.WriteFile(output, json, 0644)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	/*dat, err := ioutil.ReadFile("out.json")
+	return nil
+}
+
+func writeFile(input, output string) error {
+	in, err := ioutil.ReadFile(input)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	var file LangFile
 
-	err = json.Unmarshal(dat, &file)
+	err = json.Unmarshal(in, &file)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	data2, err := writeFile(file)
+	out, err := writeFileData(file)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
-	err = ioutil.WriteFile("out.bin", data2, 0644)
+	err = ioutil.WriteFile(output, out, 0644)
 	if err != nil {
-		log.Fatal(err)
-	}*/
+		return err
+	}
+
+	return nil
 }
 
 // I have to do this because CASIO characters are attacked by encoding/json, as they are invalid
@@ -82,19 +106,12 @@ func sanitiseString(input string) string {
 	for i, b := range bytes {
 		err, _ := utf8.DecodeRune(bytes[i : i+1])
 		if err == utf8.RuneError {
-			log.Println(strconv.Quote(input), strconv.QuoteRuneToASCII(rune(b)))
 			buf.WriteString("u{" + strconv.FormatInt(int64(b), 16) + "}")
 		} else {
 			buf.WriteByte(b)
 		}
 	}
 	return buf.String()
-}
-
-var decodeRegex *regexp.Regexp
-
-func init() {
-	decodeRegex = regexp.MustCompile("u\\{[0-9a-fA-F]{2}\\}")
 }
 
 func decodeString(input string) string {
@@ -107,7 +124,7 @@ func decodeString(input string) string {
 	})
 }
 
-func readFile(data []byte) (LangFile, error) {
+func readFileData(data []byte) (LangFile, error) {
 	var file LangFile
 
 	// Header
@@ -149,10 +166,9 @@ func readFile(data []byte) (LangFile, error) {
 	index += 14
 	// Warp!
 	index = 0x0e9c
-	// TODO: check names are equal?
-	// file.Name = string(bytes.Trim(data[index:index+16], "\x00"))
+	file.TranslatedName = sanitiseString(string(bytes.Trim(data[index:index+16], "\x00")))
 	index += 16
-	file.Salutation = string(bytes.Trim(data[index:index+16], "\x00"))
+	file.Salutation = sanitiseString(string(bytes.Trim(data[index:index+16], "\x00")))
 	index += 16
 	file.FileName = string(bytes.Trim(data[index:index+16], "\x00"))
 	index += 16
@@ -219,7 +235,7 @@ func getMaxIndex(messages map[int]string) int {
 	return maxNumber
 }
 
-func writeFile(file LangFile) ([]byte, error) {
+func writeFileData(file LangFile) ([]byte, error) {
 	var b bytes.Buffer
 
 	// Set up variables
@@ -285,8 +301,8 @@ func writeFile(file LangFile) ([]byte, error) {
 	b.WriteString(timeString)
 	// Move to 0x0e9c
 	padBuf(&b, 0x0e9c-0x14a)
-	writePadString(&b, file.Name, 16)
-	writePadString(&b, file.Salutation, 16)
+	writePadString(&b, decodeString(file.TranslatedName), 16)
+	writePadString(&b, decodeString(file.Salutation), 16)
 	writePadString(&b, file.FileName, 16)
 
 	// Move to 0x1000, executable section
