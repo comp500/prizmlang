@@ -1,0 +1,33 @@
+language: go
+sudo: false
+matrix:
+  include:
+  - go: 1.x
+    env: LATEST=true
+  - go: tip
+  allow_failures:
+  - go: tip
+before_install:
+- go get github.com/mitchellh/gox
+install:
+- 
+script:
+- go get -t -v ./...
+- diff -u <(echo -n) <(gofmt -d .)
+- go vet $(go list ./... | grep -v /vendor/)
+- go test -v -race ./...
+- if [ "${LATEST}" = "true" ]; then gox -os="linux darwin windows" -arch="amd64" -osarch="linux/arm" -ldflags "-X main.Rev=`git rev-parse --short HEAD`" -verbose ./...; fi
+deploy:
+  provider: releases
+  skip_cleanup: true
+  api_key:
+    secure: LGUbRXCRO4TDzFzPhTV06GLFdv6pIa75pQTyQZEG62wlDSYi1RmImn2UUMR81FPL1992SRl+L80xd7BmVP04cDuIimeFOxkju+IIaSTTvpjctM0vbvVxx0hWTlP0aNIa4IFjfES8AKnguTE7dtzFXCkuQSLBAjPkz8nDtPO44B4R6iWMi+TRwXSU1dpBcVKeqqNLIJvtJiiOIetvWSig1GzxTHKpJdGflCbMQCYt+2SJQvuWfVAg5IQBcF8StHVmiHHuQ9zUVZWBCC89kYiidocdKBf1gSKaRPas5NbuCJ04IusBOAHuvQcxdCO/vSQBHFDXBNzBAGqGMzIY8orHToJ6mnLUGMXXs9sf7F42k7P6tcXDXHrDYqnQJ9O5eDu/ZMRe8kP18RBfn9yeQCoWofoav7h2ben+nnSHwkPMyQn+/COukeX58f5J2so2OVjihkgetMlMdBl0ufiz6sbnu1dgnlWaBnkeVBNg6TQi8/MKVyu8Cxgn2rQKZl9Yqy7axZrnQW93eAcgbPY1gvEHI3QWXFReH2Pf/qLe0cP6FzjGc8RMzwJ3QatJdYSbH8SOedoyXBPSmXLug8MbeM9vQz2KesWfED7SMpxsZ633TiOKdTazIz6OvKv0vKcnnY7QMIJ7kLx4Oqyy9FPJxyTOYmuR+1Lgyk5AjCvZjiuVsso=
+  file:
+  - prizmlang_windows_amd64.exe
+  - prizmlang_darwin_amd64
+  - prizmlang_linux_amd64
+  - prizmlang_linux_arm
+  on:
+    repo: comp500/prizmlang
+    tags: true
+    condition: $LATEST = true

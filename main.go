@@ -205,21 +205,21 @@ func readFileData(data []byte) (LangFile, error) {
 	index += 4
 	index += 2 // Padding
 	// Make message arrays
-	messageOffsets := make([]int, messageCount)
+	messageOffsets := make([]uint32, messageCount)
 	file.Messages = make(map[int]string, messageCount)
 	for i := range messageOffsets {
 		messageOffset := binary.BigEndian.Uint32(data[index : index+4])
 		index += 4
-		messageOffsets[i] = int(messageOffset)
+		messageOffsets[i] = messageOffset
 	}
 	// After getting to first message contents, read actual message data
 	for i, v := range messageOffsets {
 		// offset == 4294967295 means it doesn't exist
-		if v != 4294967295 && v < (len(data)-index) {
+		if v != 4294967295 && int(v) < (len(data)-index) {
 			// Search index + offset to find 0x00
-			numBytes := bytes.IndexByte(data[index+v:], 0)
+			numBytes := bytes.IndexByte(data[index+int(v):], 0)
 			if numBytes != -1 {
-				file.Messages[i] = sanitiseString(string(data[index+v : index+v+numBytes]))
+				file.Messages[i] = sanitiseString(string(data[index+int(v) : index+int(v)+numBytes]))
 			} else {
 				return file, errors.New("Invalid string, could not find null byte")
 			}
