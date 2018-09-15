@@ -5,8 +5,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
-	"log"
+	"os"
 	"regexp"
 	"strconv"
 	"time"
@@ -39,17 +40,36 @@ func init() {
 }
 
 func main() {
-	err := readFile("Russian.g3l", "out.json")
-	if err != nil {
-		log.Fatal(err)
+	if len(os.Args) != 4 {
+		fmt.Println("3 arguments are required!")
+		fmt.Println("Usage: " + os.Args[0] + " [encode/decode] [arguments]")
+		fmt.Println("\t decode [input g3l] [output json]")
+		fmt.Println("\t encode [input json] [output g3l]")
+		return
 	}
-	err = writeFile("out.json", "Russian2.g3l")
-	if err != nil {
-		log.Fatal(err)
+
+	switch os.Args[1] {
+	case "decode":
+		err := decodeFile(os.Args[2], os.Args[3])
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	case "encode":
+		err := encodeFile(os.Args[2], os.Args[3])
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	default:
+		fmt.Println("You must specify encode or decode!")
+		fmt.Println("Usage: " + os.Args[0] + " [encode/decode] [arguments]")
+		fmt.Println("\t decode [input g3l] [output json]")
+		fmt.Println("\t encode [input json] [output g3l]")
 	}
 }
 
-func readFile(input, output string) error {
+func decodeFile(input, output string) error {
 	in, err := ioutil.ReadFile(input)
 	if err != nil {
 		return err
@@ -73,7 +93,7 @@ func readFile(input, output string) error {
 	return nil
 }
 
-func writeFile(input, output string) error {
+func encodeFile(input, output string) error {
 	in, err := ioutil.ReadFile(input)
 	if err != nil {
 		return err
