@@ -28,6 +28,7 @@ type LangFile struct {
 	DateCreated     time.Time
 	Salutation      string // Limited to 16 bytes
 	FileName        string // Limited to 16 bytes
+	UnknownByte     byte   // I don't know what this is, or why it is 0 or 1
 	Messages        map[int]string
 }
 
@@ -176,7 +177,9 @@ func readFileData(data []byte) (LangFile, error) {
 	// Executable section
 	index = 0x1000
 
-	index += 10 // Const: 4c 59 37 35 35 00 00 00 02 01
+	index += 9 // Const: 4c 59 37 35 35 00 00 00 02
+	file.UnknownByte = data[index]
+	index++
 	// +1 as it is zero-based?
 	messageCount := binary.BigEndian.Uint32(data[index:index+4]) + 1
 	index += 4
@@ -308,7 +311,8 @@ func writeFileData(file LangFile) ([]byte, error) {
 	// Move to 0x1000, executable section
 	padBuf(&b, 0x1000-0xecc)
 	// Const: 4c 59 37 35 35 00 00 00 02 01
-	b.WriteString("\x4c\x59\x37\x35\x35\x00\x00\x00\x02\x01")
+	b.WriteString("\x4c\x59\x37\x35\x35\x00\x00\x00\x02")
+	b.WriteByte(file.UnknownByte)
 	b.Write(messageCountBytes)
 	padBuf(&b, 2)
 	b.Write(messageOffsetBytes)
